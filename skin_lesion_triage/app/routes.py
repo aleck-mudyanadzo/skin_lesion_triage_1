@@ -68,7 +68,11 @@ def predict():
 
     # --- Preprocess (raises ImageQualityError for blurry/unusable images) ---
     try:
-        img_array, sharpness = preprocess_image(image_bytes, target_size=Config.IMG_SIZE)
+        img_array, sharpness = preprocess_image(
+            image_bytes,
+            target_size=Config.IMG_SIZE,
+            architecture=manager.arch,
+        )
     except ImageQualityError as e:
         return jsonify({"error": str(e), "error_type": "quality_rejected"}), 422
     except ValueError as e:

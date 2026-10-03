@@ -2,8 +2,8 @@
 model_manager.py
 Loads the trained Keras model (ResNet50 or MobileNetV2 transfer-learning head)
 and produces:
-  1. A risk classification + probability score.
-  2. A Grad-CAM heatmap overlay for clinical interpretability (Objective 3).
+  1. A risk classification + uncalibrated sigmoid output score.
+  2. A Grad-CAM heatmap visualization.
 
 The model itself is trained separately via scripts/train_model.py (on Colab)
 and dropped into /models as a .keras file.
@@ -56,7 +56,10 @@ class ModelManager:
         try:
             with open(self.threshold_path) as f:
                 data = json.load(f)
-            self.threshold = float(data["threshold"])
+            threshold = float(data["threshold"])
+            if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+                raise ValueError("Saved threshold must be finite and in [0, 1].")
+            self.threshold = threshold
             self.threshold_source = "tuned"
             if not data.get("met_target", True):
                 self.threshold_source = "tuned_fallback"
@@ -72,10 +75,10 @@ class ModelManager:
     def predict(self, img_array: np.ndarray) -> dict:
         """
         Args:
-            img_array: shape (1, H, W, 3), float32, scaled 0-1 — output of
-                       preprocessing.preprocess_image().
+            img_array: shape (1, H, W, 3), float32, architecture-specific
+                       ImageNet-preprocessed output of preprocess_image().
         Returns:
-            dict with class label, probability, and raw score.
+            dict with class label and uncalibrated sigmoid output scores.
         """
         if not self.is_ready():
             raise RuntimeError(
@@ -84,12 +87,14 @@ class ModelManager:
             )
         raw = self.model.predict(img_array, verbose=0)
         # Binary sigmoid output => shape (1, 1). Index 1 = "Malignant Suspect".
-        malignant_prob = float(raw[0][0])
-        label_idx = int(malignant_prob >= self.threshold)
+        malignant_score = float(raw[0][0])
+        label_idx = int(malignant_score >= self.threshold)
+        # Keep the legacy JSON field names for existing clients; these are
+        # scores, not calibrated probabilities.
         return {
             "label": self.class_names[label_idx],
-            "malignant_probability": round(malignant_prob, 4),
-            "benign_probability": round(1 - malignant_prob, 4),
+            "malignant_probability": round(malignant_score, 4),
+            "benign_probability": round(1 - malignant_score, 4),
             "risk_flag": "urgent_referral" if label_idx == 1 else "routine",
             "threshold_used": self.threshold,
             "threshold_source": self.threshold_source,

@@ -9,11 +9,21 @@ Handles the real-world problems named in the proposal (Objective 1):
 - low-quality / blurred image rejection
 
 Pipeline: decode -> hair removal (DullRazor-style inpaint) -> denoise ->
-CLAHE contrast normalization -> blur/quality check -> resize -> scale.
+CLAHE contrast normalization -> blur/quality check -> resize ->
+architecture-specific ImageNet preprocessing.
 """
 
 import cv2
 import numpy as np
+
+from app.backbone_preprocessing import preprocess_rgb_for_model
+from app.image_preprocessing import (
+    enhance_bgr_image,
+    resize_bgr_to_rgb,
+    remove_hair,
+    denoise,
+    normalize_contrast,
+)
 
 
 class ImageQualityError(Exception):
@@ -24,40 +34,6 @@ class ImageQualityError(Exception):
 def _variance_of_laplacian(gray: np.ndarray) -> float:
     """Focus measure. Low value = blurry image."""
     return cv2.Laplacian(gray, cv2.CV_64F).var()
-
-
-def remove_hair(img_bgr: np.ndarray) -> np.ndarray:
-    """
-    DullRazor-inspired hair removal:
-    1. Grayscale + blackhat morphological filter to find dark hair-like structures.
-    2. Threshold to build a hair mask.
-    3. Inpaint the masked pixels using surrounding skin texture.
-    """
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-    blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
-    _, hair_mask = cv2.threshold(blackhat, 10, 255, cv2.THRESH_BINARY)
-    inpainted = cv2.inpaint(img_bgr, hair_mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
-    return inpainted
-
-
-def denoise(img_bgr: np.ndarray) -> np.ndarray:
-    """Non-local means denoising — good for the grainy noise typical of
-    low-end smartphone sensors in poor lighting."""
-    return cv2.fastNlMeansDenoisingColored(img_bgr, None, h=6, hColor=6,
-                                            templateWindowSize=7, searchWindowSize=21)
-
-
-def normalize_contrast(img_bgr: np.ndarray) -> np.ndarray:
-    """CLAHE on the L channel of LAB colour space. Corrects uneven
-    lighting / poor contrast without blowing out skin tone colour info,
-    which matters for images across the Fitzpatrick scale."""
-    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    l_eq = clahe.apply(l)
-    merged = cv2.merge((l_eq, a, b))
-    return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
 
 
 def check_quality(img_bgr: np.ndarray, blur_threshold: float = 60.0) -> float:
@@ -78,16 +54,22 @@ def check_quality(img_bgr: np.ndarray, blur_threshold: float = 60.0) -> float:
     return score
 
 
-def preprocess_image(image_bytes: bytes, target_size=(224, 224), for_model: bool = True):
+def preprocess_image(
+    image_bytes: bytes,
+    target_size=(224, 224),
+    for_model: bool = True,
+    architecture: str = "mobilenetv2",
+):
     """
     Full pipeline entry point.
 
     Args:
         image_bytes: raw bytes read from the uploaded file.
         target_size: (H, W) expected by the CNN input layer.
-        for_model: if True, returns a normalized float32 array ready for
-                   model.predict(). If False, returns a displayable uint8
-                   BGR image (e.g. for saving a "cleaned" preview).
+        for_model: if True, returns the architecture-specific ImageNet input
+                   tensor ready for model.predict(). If False, returns a
+                   displayable uint8 BGR image.
+        architecture: "mobilenetv2" or "resnet50"; must match the trained model.
 
     Returns:
         (processed_array, sharpness_score)
@@ -97,18 +79,21 @@ def preprocess_image(image_bytes: bytes, target_size=(224, 224), for_model: bool
     if img_bgr is None:
         raise ValueError("Could not decode image. File may be corrupted or an unsupported format.")
 
-    img_bgr = remove_hair(img_bgr)
-    img_bgr = denoise(img_bgr)
-    img_bgr = normalize_contrast(img_bgr)
-
-    sharpness = check_quality(img_bgr)  # raises ImageQualityError if too blurry
-
-    img_bgr = cv2.resize(img_bgr, target_size, interpolation=cv2.INTER_AREA)
+    enhanced_bgr = enhance_bgr_image(img_bgr)
+    # This is an inference-time intake safeguard, not a model transform:
+    # training keeps all assigned cases rather than applying this unvalidated
+    # rejection threshold to the HAM10000 distribution.
+    sharpness = check_quality(enhanced_bgr)
 
     if not for_model:
-        return img_bgr, sharpness
+        resized_bgr = cv2.resize(
+            enhanced_bgr,
+            (target_size[1], target_size[0]),
+            interpolation=cv2.INTER_AREA,
+        )
+        return resized_bgr, sharpness
 
-    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype("float32")
-    img_rgb = img_rgb / 255.0
-    img_array = np.expand_dims(img_rgb, axis=0)  # batch dimension
-    return img_array, sharpness
+    img_rgb = resize_bgr_to_rgb(enhanced_bgr, target_size).astype("float32")
+    img_batch = np.expand_dims(img_rgb, axis=0)
+    model_pixels = preprocess_rgb_for_model(img_batch, architecture)
+    return model_pixels.numpy(), sharpness

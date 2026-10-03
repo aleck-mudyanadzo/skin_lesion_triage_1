@@ -1,8 +1,8 @@
 Flask>=3.0
 Werkzeug>=3.0
-tensorflow>=2.16
+tensorflow==2.16.2
 opencv-python-headless>=4.10
-numpy>=1.26
+numpy>=1.26,<2.0
 pandas>=2.2
 scikit-learn>=1.5
 Pillow>=10.4

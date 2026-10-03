@@ -101,12 +101,12 @@ function renderResults(data) {
         <span class="badge ${badgeClass} fs-6 mb-2">${badgeText}</span>
         <table class="table table-sm mt-2">
             <tr><th>Predicted Class</th><td>${data.label}</td></tr>
-            <tr><th>Malignant-Suspect Probability</th><td>${(data.malignant_probability * 100).toFixed(1)}%</td></tr>
-            <tr><th>Benign Probability</th><td>${(data.benign_probability * 100).toFixed(1)}%</td></tr>
+            <tr><th>Malignant-suspect model score (uncalibrated)</th><td>${Number(data.malignant_probability).toFixed(4)} <span class="text-muted">(0–1 score)</span></td></tr>
+            <tr><th>Benign model score (uncalibrated)</th><td>${Number(data.benign_probability).toFixed(4)} <span class="text-muted">(complementary 0–1 score)</span></td></tr>
             <tr><th>Image Sharpness Score</th><td>${data.sharpness_score}</td></tr>
             <tr><th>Model Used</th><td>${data.model_used}</td></tr>
         </table>
-        <p class="text-muted small">This is a triage aid only. Please consult a qualified clinician for diagnosis.</p>
+        <p class="text-muted small">Model scores are uncalibrated outputs, not probabilities or a diagnosis. This is not a substitute for assessment by a qualified clinician.</p>
     `;
 
     resultsCard.classList.remove("d-none");

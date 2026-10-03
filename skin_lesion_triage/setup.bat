@@ -7,11 +7,23 @@ REM ============================================================
 echo [*] Checking for Python...
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Python not found on PATH. Install Python 3.10+ from python.org
+    echo ERROR: Python not found on PATH. Install Python 3.10-3.12 from python.org
     echo and make sure "Add Python to PATH" is checked during install.
     pause
     exit /b 1
 )
+
+for /f "tokens=1,2 delims=." %%a in ('python -c "import sys; print(sys.version_info.major); print(sys.version_info.minor)" 2^>nul') do (
+    if not "%%a"=="3" goto :skip_version_check
+    if "%%b" GEQ "10" if "%%b" LEQ "12" goto :version_ok
+)
+:skip_version_check
+    echo ERROR: Python 3.10-3.12 is required for this project.
+    echo Please install Python 3.12 (recommended) or 3.10-3.12 from python.org.
+    echo Then rerun setup.bat.
+    pause
+    exit /b 1
+:version_ok
 
 echo [*] Creating virtual environment (venv)...
 python -m venv venv
