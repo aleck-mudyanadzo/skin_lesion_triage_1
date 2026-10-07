@@ -13,8 +13,11 @@ CLAHE contrast normalization -> blur/quality check -> resize ->
 architecture-specific ImageNet preprocessing.
 """
 
+import io
+
 import cv2
 import numpy as np
+from PIL import Image
 
 from app.backbone_preprocessing import preprocess_rgb_for_model
 from app.image_preprocessing import (
@@ -36,7 +39,7 @@ def _variance_of_laplacian(gray: np.ndarray) -> float:
     return cv2.Laplacian(gray, cv2.CV_64F).var()
 
 
-def check_quality(img_bgr: np.ndarray, blur_threshold: float = 60.0) -> float:
+def check_quality(img_bgr: np.ndarray, blur_threshold: float = 15.0) -> float:
     """
     Rejects images that are too blurry / featureless to be triaged safely.
     Returns the sharpness score if it passes; raises ImageQualityError if not.
@@ -76,6 +79,15 @@ def preprocess_image(
     """
     file_bytes = np.frombuffer(image_bytes, np.uint8)
     img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    if img_bgr is None:
+        # OpenCV's JPEG decoder rejects some valid encodings phone cameras
+        # produce (e.g. certain non-baseline JPEGs). Fall back to Pillow,
+        # which uses a more permissive decoder.
+        try:
+            pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            img_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        except Exception:
+            img_bgr = None
     if img_bgr is None:
         raise ValueError("Could not decode image. File may be corrupted or an unsupported format.")
 

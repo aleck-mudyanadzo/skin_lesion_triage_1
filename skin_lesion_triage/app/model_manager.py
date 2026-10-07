@@ -39,18 +39,11 @@ class ModelManager:
 
     def _load(self):
         if not self.model_path.exists():
-            # Deferred failure: allows the Flask app to boot even before a
-            # model has been trained/dropped in, so /health still works.
             self.model = None
             return
         self.model = tf.keras.models.load_model(self.model_path)
 
     def _load_threshold(self):
-        """Loads the tuned threshold written by train_model.py next to the
-        model, if present. Otherwise keeps Config.RISK_THRESHOLD (0.5 by
-        default), which will not generally meet the Objective 2 recall
-        target and should be treated as a placeholder, not a deployed
-        setting."""
         if not self.threshold_path.exists():
             return
         try:
@@ -64,8 +57,6 @@ class ModelManager:
             if not data.get("met_target", True):
                 self.threshold_source = "tuned_fallback"
         except (json.JSONDecodeError, KeyError, ValueError):
-            # Corrupt or unexpected file: fail safe to the configured default
-            # rather than crashing app start-up.
             self.threshold = Config.RISK_THRESHOLD
             self.threshold_source = "default"
 
@@ -73,24 +64,14 @@ class ModelManager:
         return self.model is not None
 
     def predict(self, img_array: np.ndarray) -> dict:
-        """
-        Args:
-            img_array: shape (1, H, W, 3), float32, architecture-specific
-                       ImageNet-preprocessed output of preprocess_image().
-        Returns:
-            dict with class label and uncalibrated sigmoid output scores.
-        """
         if not self.is_ready():
             raise RuntimeError(
                 f"No model file found at {self.model_path}. "
                 f"Train a model with scripts/train_model.py and place it there."
             )
         raw = self.model.predict(img_array, verbose=0)
-        # Binary sigmoid output => shape (1, 1). Index 1 = "Malignant Suspect".
         malignant_score = float(raw[0][0])
         label_idx = int(malignant_score >= self.threshold)
-        # Keep the legacy JSON field names for existing clients; these are
-        # scores, not calibrated probabilities.
         return {
             "label": self.class_names[label_idx],
             "malignant_probability": round(malignant_score, 4),
@@ -101,25 +82,53 @@ class ModelManager:
         }
 
     def grad_cam(self, img_array: np.ndarray, pred_index: int = None) -> np.ndarray:
-        """
-        Generates a Grad-CAM heatmap (values 0-1, shape H x W) highlighting
-        the region of the lesion image that most influenced the prediction.
-        """
         if not self.is_ready():
             raise RuntimeError("Model not loaded; cannot compute Grad-CAM.")
 
-        grad_model = tf.keras.models.Model(
-            inputs=self.model.inputs,
-            outputs=[self.model.get_layer(self.gradcam_layer_name).output, self.model.output],
-        )
+        target_layer = None
+        container = None
+        for layer in self.model.layers:
+            if layer.name == self.gradcam_layer_name:
+                target_layer = layer
+                container = None
+                break
+            if hasattr(layer, "layers"):
+                try:
+                    target_layer = layer.get_layer(self.gradcam_layer_name)
+                    container = layer
+                    break
+                except ValueError:
+                    continue
 
-        with tf.GradientTape() as tape:
-            conv_outputs, predictions = grad_model(img_array)
-            if pred_index is None:
-                # Binary sigmoid: gradient of the single output neuron
-                loss = predictions[:, 0]
-            else:
-                loss = predictions[:, pred_index]
+        if target_layer is None:
+            raise ValueError(
+                f"Grad-CAM layer '{self.gradcam_layer_name}' not found, "
+                f"including inside nested sub-models."
+            )
+
+        if container is None:
+            grad_model = tf.keras.models.Model(
+                inputs=self.model.inputs,
+                outputs=[target_layer.output, self.model.output],
+            )
+            with tf.GradientTape() as tape:
+                conv_outputs, predictions = grad_model(img_array)
+                loss = predictions[:, 0] if pred_index is None else predictions[:, pred_index]
+        else:
+            grad_submodel = tf.keras.models.Model(
+                inputs=container.input,
+                outputs=[target_layer.output, container.output],
+            )
+            container_index = self.model.layers.index(container)
+            remaining_layers = self.model.layers[container_index + 1:]
+
+            with tf.GradientTape() as tape:
+                conv_outputs, base_output = grad_submodel(img_array)
+                x = base_output
+                for layer in remaining_layers:
+                    x = layer(x, training=False)
+                predictions = x
+                loss = predictions[:, 0] if pred_index is None else predictions[:, pred_index]
 
         grads = tape.gradient(loss, conv_outputs)
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
@@ -131,8 +140,6 @@ class ModelManager:
         return heatmap.numpy()
 
     def overlay_heatmap(self, original_bgr: np.ndarray, heatmap: np.ndarray, alpha: float = 0.4) -> np.ndarray:
-        """Resizes heatmap to the original image size and blends it as a
-        jet colormap overlay for display in the results page."""
         heatmap_resized = cv2.resize(heatmap, (original_bgr.shape[1], original_bgr.shape[0]))
         heatmap_uint8 = np.uint8(255 * heatmap_resized)
         heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
@@ -141,8 +148,6 @@ class ModelManager:
 
     @staticmethod
     def encode_image_base64(img_bgr: np.ndarray) -> str:
-        """Encodes a BGR numpy image as a base64 PNG string for direct
-        embedding in an HTML <img src="data:image/png;base64,..."> tag."""
         success, buffer = cv2.imencode(".png", img_bgr)
         if not success:
             raise ValueError("Failed to encode image.")
@@ -150,8 +155,6 @@ class ModelManager:
 
 
 def get_model_manager() -> ModelManager:
-    """Simple singleton accessor so the (potentially large) model is loaded
-    once per process, not once per request."""
     if ModelManager._instance is None:
         ModelManager._instance = ModelManager()
     return ModelManager._instance
