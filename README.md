@@ -133,7 +133,7 @@ Performance numbers alone do not show that a tool is usable. We are asking 15 to
 You need Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/aleckalkahmudyanadzo-cyber/skin_lesion_triage_1.git
+git clone https://github.com/aleck-mudyanadzo/skin_lesion_triage_1.git
 cd skin_lesion_triage_1
 pip install -r requirements.txt
 python run.py
