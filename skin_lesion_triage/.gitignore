@@ -9,3 +9,5 @@ data/processed/*
 models/*.keras
 app/static/uploads/*
 !app/static/uploads/.gitkeep
+instance/result_images/*
+!instance/result_images/.gitkeep
