@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Prediction History: Skin Lesion Triage{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+
+            <h4 class="fw-bold mb-3">
+                <i class="bi bi-clock-history text-primary"></i> Prediction History
+            </h4>
+            <p class="text-muted small mb-4">
+                An anonymous audit log of recent predictions. No images are stored,
+                only a one way hash of each uploaded file, so no identifiable data
+                is retained.
+            </p>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm rounded-4 p-3 text-center hover-lift">
+                        <div class="fs-3 fw-bold text-primary">{{ summary.total_predictions }}</div>
+                        <div class="small text-muted">Total Predictions Logged</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm rounded-4 p-3 text-center hover-lift">
+                        <div class="fs-3 fw-bold text-danger">{{ summary.urgent_referrals }}</div>
+                        <div class="small text-muted">Flagged Urgent Referral</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp (UTC)</th>
+                                    <th>Image Hash</th>
+                                    <th>Model</th>
+                                    <th>Predicted Class</th>
+                                    <th>Malignant Score</th>
+                                    <th>Sharpness</th>
+                                    <th>Risk Flag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in logs %}
+                                <tr>
+                                    <td class="small text-muted">{{ row.timestamp[:19] }}</td>
+                                    <td class="small"><code>{{ row.image_hash }}</code></td>
+                                    <td>{{ row.model_used }}</td>
+                                    <td>{{ row.predicted_label }}</td>
+                                    <td>{{ "%.4f"|format(row.malignant_probability) }}</td>
+                                    <td>{{ row.sharpness_score }}</td>
+                                    <td>
+                                        {% if row.risk_flag == "urgent_referral" %}
+                                        <span class="badge risk-badge-malignant">Urgent</span>
+                                        {% else %}
+                                        <span class="badge risk-badge-benign">Routine</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        No predictions logged yet.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

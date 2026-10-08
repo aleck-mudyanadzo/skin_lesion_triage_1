@@ -1,15 +1,177 @@
+:root {
+    --brand-teal: #0d9488;
+    --brand-teal-dark: #0f766e;
+    --brand-bg: #f8fafc;
+}
+
+body {
+    font-family: "Inter", system-ui, sans-serif;
+    background-color: var(--brand-bg);
+    position: relative;
+}
+
+body::before,
+body::after {
+    content: "";
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    z-index: -1;
+    opacity: 0.22;
+    pointer-events: none;
+}
+
+body::before {
+    width: 420px;
+    height: 420px;
+    background: var(--brand-teal);
+    top: -120px;
+    right: -120px;
+}
+
+body::after {
+    width: 380px;
+    height: 380px;
+    background: #0ea5e9;
+    bottom: -140px;
+    left: -140px;
+}
+
+[data-bs-theme="dark"] body {
+    background-color: #0f172a;
+}
+
+[data-bs-theme="dark"] body::before,
+[data-bs-theme="dark"] body::after {
+    opacity: 0.12;
+}
+
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+    font-family: "Poppins", system-ui, sans-serif;
+}
+
+.app-navbar {
+    background: linear-gradient(135deg, var(--brand-teal-dark), var(--brand-teal));
+}
+
+.app-footer {
+    background: linear-gradient(135deg, var(--brand-teal-dark), var(--brand-teal));
+    color: rgba(255,255,255,0.92);
+}
+
+.hero-section {
+    position: relative;
+    overflow: hidden;
+    background-image:
+        linear-gradient(135deg, rgba(15,118,110,0.92), rgba(13,148,136,0.88) 55%, rgba(14,165,233,0.85)),
+        url("https://commons.wikimedia.org/wiki/Special:FilePath/Dermatoscope.jpg");
+    background-size: cover;
+    background-position: center;
+}
+
+.hero-content {
+    animation: hero-in 0.8s ease both;
+}
+
+@keyframes hero-in {
+    from { opacity: 0; transform: translateY(-24px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-pill {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    position: relative;
+    z-index: 1;
+}
+
+.reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.reveal.revealed {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 1rem 2rem rgba(0,0,0,0.08) !important;
+}
+
+.tilt-3d {
+    transition: transform 0.15s ease;
+    transform-style: preserve-3d;
+    will-change: transform;
+}
+
+.feature-card {
+    background: #ffffff;
+    border: 1px solid #eef2f7;
+}
+
+[data-bs-theme="dark"] .feature-card,
+[data-bs-theme="dark"] .card {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+.notice-3d-wrap {
+    perspective: 800px;
+}
+
+.notice-3d {
+    animation: notice-flick 4.5s ease-in-out infinite;
+    transform-origin: center top;
+}
+
+@keyframes notice-flick {
+    0%, 85%, 100% {
+        transform: rotateX(0deg) scale(1);
+        box-shadow: 0 0.25rem 0.5rem rgba(0,0,0,0.06);
+    }
+    88% {
+        transform: rotateX(-6deg) scale(1.01);
+        box-shadow: 0 0.75rem 1.5rem rgba(255,193,7,0.35);
+    }
+    92% {
+        transform: rotateX(4deg) scale(1.01);
+    }
+    96% {
+        transform: rotateX(0deg) scale(1);
+    }
+}
+
 .drop-zone {
     border: 2px dashed #adb5bd;
-    border-radius: 0.5rem;
+    border-radius: 1rem;
     cursor: pointer;
     background-color: #f8f9fa;
     transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
+[data-bs-theme="dark"] .drop-zone {
+    background-color: #1e293b;
+    border-color: #475569;
+}
+
 .drop-zone:hover,
 .drop-zone.drag-over {
-    border-color: #0d6efd;
-    background-color: #eef4ff;
+    border-color: var(--brand-teal);
+    background-color: #ecfdf9;
 }
 
 .risk-badge-benign {
@@ -17,6 +179,22 @@
 }
 
 .risk-badge-malignant {
+    background-color: #dc3545;
+}
+
+.risk-meter .progress-bar {
+    transition: width 0.6s ease, background-color 0.6s ease;
+}
+
+.risk-meter-low {
+    background-color: #198754;
+}
+
+.risk-meter-medium {
+    background-color: #ffc107;
+}
+
+.risk-meter-high {
     background-color: #dc3545;
 }
 

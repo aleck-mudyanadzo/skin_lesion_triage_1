@@ -1,66 +1,137 @@
 {% extends "base.html" %}
-{% block title %}Upload Image &mdash; Skin Lesion Triage{% endblock %}
+{% block title %}Upload Image: Skin Lesion Triage{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-lg-8">
-
-        <div class="alert alert-warning" role="alert">
-            <strong>Important:</strong> This tool provides a preliminary risk indication
-            only. It does <strong>not</strong> replace a clinical diagnosis. Any flagged
-            result should be followed up with a qualified dermatologist or clinician.
-        </div>
-
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h4 class="card-title mb-3">Upload a Skin Lesion Image</h4>
-
-                <div id="drop-zone" class="drop-zone text-center p-5 mb-3">
-                    <p class="mb-1">Drag &amp; drop an image here, or click to browse</p>
-                    <p class="text-muted small mb-0">PNG or JPG, max 8MB</p>
-                    <input type="file" id="file-input" accept=".png,.jpg,.jpeg" hidden>
-                </div>
-
-                <div id="preview-container" class="text-center mb-3 d-none">
-                    <img id="preview-image" class="img-fluid rounded border" style="max-height:300px;">
-                </div>
-
-                <div class="d-grid">
-                    <button id="analyze-btn" class="btn btn-primary btn-lg" disabled>
-                        Analyze Image
-                    </button>
-                </div>
-
-                <div id="loading" class="text-center mt-3 d-none">
-                    <div class="spinner-border text-primary" role="status"></div>
-                    <p class="mt-2 text-muted">Running preprocessing and inference&hellip;</p>
-                </div>
-
-                <div id="error-box" class="alert alert-danger mt-3 d-none"></div>
-            </div>
-        </div>
-
-        <div id="results" class="card shadow-sm mt-4 d-none">
-            <div class="card-body">
-                <h4 class="card-title mb-3">Triage Result</h4>
-                <div class="row">
-                    <div class="col-md-6 text-center mb-3">
-                        <p class="fw-bold">Original (preprocessed)</p>
-                        <img id="result-original" class="img-fluid rounded border">
+<section class="hero-section text-white">
+    <div class="container py-5">
+        <div class="row align-items-center">
+            <div class="col-lg-7 hero-content">
+                <h1 class="display-6 fw-bold mb-3">AI-Assisted Skin Lesion Triage</h1>
+                <p class="lead mb-4 opacity-90">
+                    Transfer-learning based risk screening from smartphone photos,
+                    with explainable AI showing exactly what influenced each result.
+                </p>
+                <div class="d-flex flex-wrap gap-3">
+                    <div class="hero-pill">
+                        <i class="bi bi-image"></i> OpenCV Preprocessing
                     </div>
-                    <div class="col-md-6 text-center mb-3">
-                        <p class="fw-bold">Grad-CAM Heatmap</p>
-                        <img id="result-heatmap" class="img-fluid rounded border">
-                        <p class="text-muted small mt-1">Red/yellow regions influenced the prediction most.</p>
+                    <div class="hero-pill">
+                        <i class="bi bi-diagram-3"></i> Dual Architecture Comparison
+                    </div>
+                    <div class="hero-pill">
+                        <i class="bi bi-eye"></i> Grad-CAM Explainability
                     </div>
                 </div>
-
-                <hr>
-
-                <div id="result-summary"></div>
             </div>
         </div>
+    </div>
+</section>
 
+<div class="container my-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+
+            <div class="notice-3d-wrap mb-3 reveal">
+                <div class="alert alert-warning d-flex align-items-start gap-2 rounded-4 shadow-sm notice-3d" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+                    <div>
+                        <strong>Important:</strong> This tool provides a preliminary risk indication
+                        only. It does <strong>not</strong> replace a clinical diagnosis. Any flagged
+                        result should be followed up with a qualified dermatologist or clinician.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm rounded-4 border-0 hover-lift reveal">
+                <div class="card-body p-4">
+                    <h4 class="card-title mb-3 fw-bold">
+                        <i class="bi bi-cloud-upload text-primary"></i> Upload a Skin Lesion Image
+                    </h4>
+
+                    <div id="drop-zone" class="drop-zone text-center p-5 mb-3">
+                        <i class="bi bi-image fs-1 text-primary mb-2 d-block"></i>
+                        <p class="mb-1 fw-semibold">Drag and drop an image here, or click to browse</p>
+                        <p class="text-muted small mb-0">PNG or JPG, max 8MB</p>
+                        <input type="file" id="file-input" accept=".png,.jpg,.jpeg" hidden>
+                    </div>
+
+                    <div id="preview-container" class="text-center mb-3 d-none">
+                        <img id="preview-image" class="img-fluid rounded-4 border" style="max-height:300px;">
+                    </div>
+
+                    <div class="d-grid">
+                        <button id="analyze-btn" class="btn btn-primary btn-lg rounded-3" disabled>
+                            <i class="bi bi-search"></i> Analyze Image
+                        </button>
+                    </div>
+
+                    <div id="loading" class="text-center mt-3 d-none">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted">Running preprocessing and inference...</p>
+                    </div>
+
+                    <div id="error-box" class="alert alert-danger mt-3 d-none rounded-3"></div>
+                </div>
+            </div>
+
+            <div id="results" class="card shadow-sm rounded-4 border-0 mt-4 d-none">
+                <div class="card-body p-4">
+                    <h4 class="card-title mb-3 fw-bold">
+                        <i class="bi bi-clipboard2-data text-primary"></i> Triage Result
+                    </h4>
+                    <div class="row">
+                        <div class="col-md-6 text-center mb-3">
+                            <p class="fw-bold">Original (preprocessed)</p>
+                            <img id="result-original" class="img-fluid rounded-4 border">
+                        </div>
+                        <div class="col-md-6 text-center mb-3">
+                            <p class="fw-bold">Grad-CAM Heatmap</p>
+                            <img id="result-heatmap" class="img-fluid rounded-4 border">
+                            <p class="text-muted small mt-1">Red/yellow regions influenced the prediction most.</p>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div id="risk-meter-wrap" class="mb-3">
+                        <div class="d-flex justify-content-between small text-muted mb-1">
+                            <span>Benign</span>
+                            <span>Malignant Suspect</span>
+                        </div>
+                        <div class="progress risk-meter" role="progressbar" style="height: 14px;">
+                            <div id="risk-meter-bar" class="progress-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div id="result-summary"></div>
+                </div>
+            </div>
+
+            <div class="row mt-5 g-3 text-center">
+                <div class="col-md-4">
+                    <div class="feature-card hover-lift tilt-3d reveal p-4 rounded-4 shadow-sm h-100">
+                        <i class="bi bi-magic fs-2 text-primary mb-2"></i>
+                        <h6 class="fw-bold">Smart Preprocessing</h6>
+                        <p class="small text-muted mb-0">Hair removal, denoising and contrast normalization tailored for smartphone photos.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card hover-lift tilt-3d reveal p-4 rounded-4 shadow-sm h-100">
+                        <i class="bi bi-diagram-3 fs-2 text-primary mb-2"></i>
+                        <h6 class="fw-bold">Architecture Comparison</h6>
+                        <p class="small text-muted mb-0">MobileNetV2 and ResNet50 transfer learning, evaluated head to head on validation recall.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card hover-lift tilt-3d reveal p-4 rounded-4 shadow-sm h-100">
+                        <i class="bi bi-eye fs-2 text-primary mb-2"></i>
+                        <h6 class="fw-bold">Explainable Results</h6>
+                        <p class="small text-muted mb-0">Grad-CAM heatmaps show exactly which region influenced each prediction.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </div>
 </div>
 {% endblock %}

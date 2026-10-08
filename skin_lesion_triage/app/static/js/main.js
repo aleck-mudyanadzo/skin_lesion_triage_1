@@ -1,123 +1,220 @@
-const dropZone = document.getElementById("drop-zone");
-const fileInput = document.getElementById("file-input");
-const previewContainer = document.getElementById("preview-container");
-const previewImage = document.getElementById("preview-image");
-const analyzeBtn = document.getElementById("analyze-btn");
-const loading = document.getElementById("loading");
-const errorBox = document.getElementById("error-box");
-const resultsCard = document.getElementById("results");
+document.addEventListener("DOMContentLoaded", function () {
+    const dropZone = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("file-input");
+    const previewContainer = document.getElementById("preview-container");
+    const previewImage = document.getElementById("preview-image");
+    const analyzeBtn = document.getElementById("analyze-btn");
+    const loading = document.getElementById("loading");
+    const errorBox = document.getElementById("error-box");
+    const resultsCard = document.getElementById("results");
+    const resultOriginal = document.getElementById("result-original");
+    const resultHeatmap = document.getElementById("result-heatmap");
+    const riskMeterBar = document.getElementById("risk-meter-bar");
+    const resultSummary = document.getElementById("result-summary");
 
-let selectedFile = null;
+    let selectedFile = null;
 
-dropZone.addEventListener("click", () => fileInput.click());
-
-dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropZone.classList.add("drag-over");
-});
-
-dropZone.addEventListener("dragleave", () => {
-    dropZone.classList.remove("drag-over");
-});
-
-dropZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dropZone.classList.remove("drag-over");
-    if (e.dataTransfer.files.length) {
-        handleFile(e.dataTransfer.files[0]);
-    }
-});
-
-fileInput.addEventListener("change", () => {
-    if (fileInput.files.length) {
-        handleFile(fileInput.files[0]);
-    }
-});
-
-function handleFile(file) {
-    const validTypes = ["image/png", "image/jpeg"];
-    if (!validTypes.includes(file.type)) {
-        showError("Please upload a PNG or JPG image.");
-        return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-        showError("File too large. Maximum size is 8MB.");
-        return;
+    function showError(message) {
+        if (!errorBox) return;
+        errorBox.textContent = message;
+        errorBox.classList.remove("d-none");
     }
 
-    selectedFile = file;
-    hideError();
+    function hideError() {
+        if (!errorBox) return;
+        errorBox.classList.add("d-none");
+        errorBox.textContent = "";
+    }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        previewImage.src = e.target.result;
-        previewContainer.classList.remove("d-none");
-        analyzeBtn.disabled = false;
-    };
-    reader.readAsDataURL(file);
-}
-
-analyzeBtn.addEventListener("click", async () => {
-    if (!selectedFile) return;
-
-    hideError();
-    resultsCard.classList.add("d-none");
-    loading.classList.remove("d-none");
-    analyzeBtn.disabled = true;
-
-    const formData = new FormData();
-    formData.append("image", selectedFile);
-
-    try {
-        const response = await fetch("/predict", {
-            method: "POST",
-            body: formData,
+    if (dropZone && fileInput) {
+        dropZone.addEventListener("click", function () {
+            fileInput.click();
         });
-        const data = await response.json();
 
-        if (!response.ok) {
-            showError(data.error || "Something went wrong during analysis.");
+        dropZone.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            dropZone.classList.add("drag-over");
+        });
+
+        dropZone.addEventListener("dragleave", function () {
+            dropZone.classList.remove("drag-over");
+        });
+
+        dropZone.addEventListener("drop", function (e) {
+            e.preventDefault();
+            dropZone.classList.remove("drag-over");
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener("change", function () {
+            if (fileInput.files && fileInput.files.length > 0) {
+                handleFile(fileInput.files[0]);
+            }
+        });
+    }
+
+    function handleFile(file) {
+        hideError();
+        const allowed = ["image/png", "image/jpeg", "image/jpg"];
+        if (allowed.indexOf(file.type) === -1) {
+            showError("Please upload a PNG or JPG image.");
             return;
         }
+        selectedFile = file;
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            if (previewImage) previewImage.src = e.target.result;
+            if (previewContainer) previewContainer.classList.remove("d-none");
+            if (analyzeBtn) analyzeBtn.disabled = false;
+        };
+        reader.readAsDataURL(file);
+    }
 
-        renderResults(data);
-    } catch (err) {
-        showError("Network error: could not reach the server.");
-    } finally {
-        loading.classList.add("d-none");
-        analyzeBtn.disabled = false;
+    if (analyzeBtn) {
+        analyzeBtn.addEventListener("click", function () {
+            if (!selectedFile) return;
+            runAnalysis(selectedFile);
+        });
+    }
+
+    function runAnalysis(file) {
+        hideError();
+        if (loading) loading.classList.remove("d-none");
+        if (resultsCard) resultsCard.classList.add("d-none");
+        if (analyzeBtn) analyzeBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append("image", file);
+
+        fetch("/predict", {
+            method: "POST",
+            body: formData
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().then(function (errData) {
+                        throw new Error(errData.error || "Request failed.");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                renderResults(data);
+            })
+            .catch(function (err) {
+                showError(err.message || "Something went wrong while analyzing the image.");
+            })
+            .finally(function () {
+                if (loading) loading.classList.add("d-none");
+                if (analyzeBtn) analyzeBtn.disabled = false;
+            });
+    }
+
+    function pick(data, keys) {
+        for (let i = 0; i < keys.length; i++) {
+            if (data[keys[i]]) return data[keys[i]];
+        }
+        return null;
+    }
+
+    function formatRiskFlag(flag) {
+        if (flag === "urgent_referral") return "Urgent Referral Suggested";
+        if (flag === "routine") return "Routine";
+        return flag || "Routine";
+    }
+
+    function renderResults(data) {
+        if (!resultsCard) return;
+
+        const label = data.label || data.predicted_label || "Unknown";
+        const score = typeof data.malignant_probability === "number" ? data.malignant_probability : 0;
+        const scorePct = (score * 100).toFixed(1);
+        const riskFlag = formatRiskFlag(data.risk_flag);
+        const isMalignant = label.toLowerCase().indexOf("malignant") !== -1;
+        const badgeClass = isMalignant ? "risk-badge-malignant" : "risk-badge-benign";
+
+        let meterClass = "risk-meter-low";
+        if (score >= 0.66) {
+            meterClass = "risk-meter-high";
+        } else if (score >= 0.33) {
+            meterClass = "risk-meter-medium";
+        }
+
+        const originalImg = pick(data, ["original_image_b64", "original_image", "processed_image"]);
+        const heatmapImg = pick(data, ["heatmap_overlay_b64", "heatmap_image", "gradcam_image"]);
+
+        if (resultOriginal && originalImg) {
+            resultOriginal.src = "data:image/png;base64," + originalImg;
+        }
+        if (resultHeatmap && heatmapImg) {
+            resultHeatmap.src = "data:image/png;base64," + heatmapImg;
+        }
+
+        if (riskMeterBar) {
+            riskMeterBar.className = "progress-bar " + meterClass;
+            riskMeterBar.style.width = scorePct + "%";
+        }
+
+        let refLine = "";
+        if (data.reference_code) {
+            const resultUrl = window.location.origin + "/result/" + data.reference_code;
+            refLine = "<div class=\"alert alert-info small mb-3\"><i class=\"bi bi-ticket-perforated\"></i> " +
+                "Save this code to view this result again later: <strong>" + data.reference_code + "</strong><br>" +
+                "<a href=\"" + resultUrl + "\">" + resultUrl + "</a></div>";
+        }
+
+        if (resultSummary) {
+            resultSummary.innerHTML =
+                "<div class=\"d-flex align-items-center justify-content-between mb-3\">" +
+                "<span class=\"badge " + badgeClass + " fs-6\">" + label + "</span>" +
+                "<span class=\"text-muted small\">" + riskFlag + "</span>" +
+                "</div>" +
+                "<div class=\"text-center small text-muted mb-3\">Malignant probability: " + scorePct + "%</div>" +
+                refLine;
+        }
+
+        resultsCard.classList.remove("d-none");
+        resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    const tiltCards = document.querySelectorAll(".tilt-3d");
+    tiltCards.forEach(function (card) {
+        card.addEventListener("mousemove", function (e) {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const rotateX = ((y - centerY) / centerY) * -6;
+            const rotateY = ((x - centerX) / centerX) * 6;
+            card.style.transform = "perspective(800px) rotateX(" + rotateX + "deg) rotateY(" + rotateY + "deg) scale(1.02)";
+        });
+        card.addEventListener("mouseleave", function () {
+            card.style.transform = "perspective(800px) rotateX(0deg) rotateY(0deg) scale(1)";
+        });
+    });
+
+    const revealEls = document.querySelectorAll(".reveal");
+    if ("IntersectionObserver" in window && revealEls.length > 0) {
+        const observer = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add("revealed");
+                        observer.unobserve(entry.target);
+                    }
+                });
+            },
+            { threshold: 0.15 }
+        );
+        revealEls.forEach(function (el) {
+            observer.observe(el);
+        });
+    } else {
+        revealEls.forEach(function (el) {
+            el.classList.add("revealed");
+        });
     }
 });
-
-function renderResults(data) {
-    document.getElementById("result-original").src = "data:image/png;base64," + data.original_image_b64;
-    document.getElementById("result-heatmap").src = "data:image/png;base64," + data.heatmap_overlay_b64;
-
-    const isMalignant = data.risk_flag === "urgent_referral";
-    const badgeClass = isMalignant ? "risk-badge-malignant" : "risk-badge-benign";
-    const badgeText = isMalignant ? "Urgent Referral Suggested" : "Routine / Low Risk";
-
-    document.getElementById("result-summary").innerHTML = `
-        <span class="badge ${badgeClass} fs-6 mb-2">${badgeText}</span>
-        <table class="table table-sm mt-2">
-            <tr><th>Predicted Class</th><td>${data.label}</td></tr>
-            <tr><th>Malignant-suspect model score (uncalibrated)</th><td>${Number(data.malignant_probability).toFixed(4)} <span class="text-muted">(0–1 score)</span></td></tr>
-            <tr><th>Benign model score (uncalibrated)</th><td>${Number(data.benign_probability).toFixed(4)} <span class="text-muted">(complementary 0–1 score)</span></td></tr>
-            <tr><th>Image Sharpness Score</th><td>${data.sharpness_score}</td></tr>
-            <tr><th>Model Used</th><td>${data.model_used}</td></tr>
-        </table>
-        <p class="text-muted small">Model scores are uncalibrated outputs, not probabilities or a diagnosis. This is not a substitute for assessment by a qualified clinician.</p>
-    `;
-
-    resultsCard.classList.remove("d-none");
-    resultsCard.scrollIntoView({ behavior: "smooth" });
-}
-
-function showError(msg) {
-    errorBox.textContent = msg;
-    errorBox.classList.remove("d-none");
-}
-
-function hideError() {
-    errorBox.classList.add("d-none");
-}

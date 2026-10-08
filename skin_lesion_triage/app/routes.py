@@ -5,11 +5,13 @@ All HTTP endpoints for the triage system.
 
 import cv2
 import numpy as np
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request, abort
 
 from app.database import (
     get_summary_stats,
     get_survey_summary,
+    get_recent_logs,
+    get_prediction_by_reference_code,
     log_prediction,
     log_survey_response,
     compute_sus_score,
@@ -66,7 +68,6 @@ def predict():
                      f"Train and place a model before running predictions."
         }), 503
 
-    # --- Preprocess (raises ImageQualityError for blurry/unusable images) ---
     try:
         img_array, sharpness = preprocess_image(
             image_bytes,
@@ -78,32 +79,67 @@ def predict():
     except ValueError as e:
         return jsonify({"error": str(e), "error_type": "decode_error"}), 400
 
-    # --- Predict ---
     result = manager.predict(img_array)
 
-    # --- Grad-CAM overlay ---
     file_bytes = np.frombuffer(image_bytes, np.uint8)
     original_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     original_bgr = cv2.resize(original_bgr, Config.IMG_SIZE)
 
     heatmap = manager.grad_cam(img_array)
     overlay = manager.overlay_heatmap(original_bgr, heatmap)
-    overlay_b64 = manager.encode_image_base64(overlay)
-    original_b64 = manager.encode_image_base64(original_bgr)
 
-    # --- Log (best-effort; don't fail the request if logging breaks) ---
+    _, original_png = cv2.imencode(".png", original_bgr)
+    _, heatmap_png = cv2.imencode(".png", overlay)
+    original_b64 = manager.encode_image_base64(original_bgr)
+    overlay_b64 = manager.encode_image_base64(overlay)
+
+    log_result = {"id": None, "reference_code": None}
     try:
-        log_prediction(image_bytes, manager.arch, result, sharpness)
+        log_result = log_prediction(
+            image_bytes, manager.arch, result, sharpness,
+            original_png_bytes=original_png.tobytes(),
+            heatmap_png_bytes=heatmap_png.tobytes(),
+        )
     except Exception as e:
         current_app.logger.warning(f"Failed to log prediction: {e}")
 
     return jsonify({
         **result,
+        "reference_id": log_result["id"],
+        "reference_code": log_result["reference_code"],
         "sharpness_score": round(sharpness, 1),
         "model_used": manager.arch,
         "original_image_b64": original_b64,
         "heatmap_overlay_b64": overlay_b64,
     })
+
+
+@bp.route("/result/<reference_code>")
+def view_result(reference_code):
+    row = get_prediction_by_reference_code(reference_code)
+    if row is None or not row.get("original_image_path"):
+        abort(404)
+
+    import base64
+    try:
+        with open(row["original_image_path"], "rb") as f:
+            original_b64 = base64.b64encode(f.read()).decode("utf-8")
+        with open(row["heatmap_image_path"], "rb") as f:
+            heatmap_b64 = base64.b64encode(f.read()).decode("utf-8")
+    except FileNotFoundError:
+        abort(404)
+
+    return render_template(
+        "result.html",
+        row=row,
+        original_b64=original_b64,
+        heatmap_b64=heatmap_b64,
+    )
+
+
+@bp.route("/lookup")
+def lookup():
+    return render_template("lookup.html")
 
 
 @bp.route("/stats")
@@ -116,9 +152,18 @@ def stats():
         return jsonify({"error": str(e)}), 500
 
 
-# System Usability Scale (Brooke, 1996) — used for Objective 4's usability
-# evaluation. Statements alternate positive/negative wording per the
-# original instrument; see compute_sus_score() in database.py for scoring.
+@bp.route("/history")
+def history():
+    try:
+        logs = get_recent_logs(limit=50)
+        summary = get_summary_stats()
+    except Exception as e:
+        logs = []
+        summary = {"total_predictions": 0, "urgent_referrals": 0}
+        current_app.logger.warning(f"Failed to load history: {e}")
+    return render_template("history.html", logs=logs, summary=summary)
+
+
 SUS_STATEMENTS = [
     "I think that I would like to use this system frequently.",
     "I found the system unnecessarily complex.",
@@ -138,8 +183,6 @@ def survey():
     if request.method == "GET":
         return render_template("survey.html", statements=SUS_STATEMENTS, submitted=False)
 
-    # POST — validate all ten answers are present and each is 1-5 before
-    # touching the database.
     answers = {}
     errors = []
     for i in range(1, 11):
@@ -164,8 +207,6 @@ def survey():
 
     sus_score = compute_sus_score(answers)
 
-    # Best-effort logging, same pattern as /predict — a logging failure
-    # should not stop the respondent from seeing their score.
     try:
         log_survey_response(answers, sus_score)
     except Exception as e:

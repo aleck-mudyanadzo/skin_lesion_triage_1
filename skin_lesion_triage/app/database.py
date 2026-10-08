@@ -1,11 +1,14 @@
 """
 database.py
-Lightweight SQLite logging of anonymous usage/prediction events, used later
-for the usability/evaluation phase (Objective 4) and for basic auditability.
-No personally identifiable information is stored — filenames are hashed.
+SQLite logging of prediction events. The predictions table stores a
+one-way hash of the uploaded image (never the image itself, by default)
+plus the two result images saved to disk, retrievable later only by a
+random, unguessable reference_code - not the sequential row id, which
+would let someone enumerate and view other people's results.
 """
 
 import hashlib
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 
@@ -19,9 +22,13 @@ def get_connection():
     return conn
 
 
+def _add_column_if_missing(conn, table, column, coltype):
+    cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+
+
 def init_db():
-    """Creates the logging tables if they don't already exist. Safe to call
-    on every app startup."""
     conn = get_connection()
     conn.execute(
         """
@@ -37,6 +44,13 @@ def init_db():
         )
         """
     )
+    _add_column_if_missing(conn, "predictions", "reference_code", "TEXT")
+    _add_column_if_missing(conn, "predictions", "original_image_path", "TEXT")
+    _add_column_if_missing(conn, "predictions", "heatmap_image_path", "TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_predictions_reference_code ON predictions(reference_code)"
+    )
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS survey_responses (
@@ -61,26 +75,14 @@ def init_db():
 
 
 def hash_bytes(data: bytes) -> str:
-    """One-way hash of the raw image bytes — lets us dedupe / audit without
-    storing anything identifiable."""
     return hashlib.sha256(data).hexdigest()[:16]
 
 
-# System Usability Scale (Brooke, 1996). Odd-numbered statements are worded
-# positively, even-numbered ones negatively — this is deliberate in the
-# original instrument, alternating the wording keeps respondents reading
-# each statement rather than clicking the same column down the page.
 SUS_ODD_ITEMS = {1, 3, 5, 7, 9}
 SUS_EVEN_ITEMS = {2, 4, 6, 8, 10}
 
 
 def compute_sus_score(answers: dict) -> float:
-    """
-    answers: dict mapping question number (1-10) to a Likert rating (1-5).
-    Standard SUS scoring: each odd-numbered item contributes (rating - 1),
-    each even-numbered item contributes (5 - rating); the ten contributions
-    are summed and multiplied by 2.5, giving a score out of 100.
-    """
     total = 0
     for i in range(1, 11):
         rating = answers[i]
@@ -122,14 +124,40 @@ def get_survey_summary():
     }
 
 
-def log_prediction(image_bytes: bytes, model_used: str, result: dict, sharpness_score: float):
+def log_prediction(
+    image_bytes: bytes,
+    model_used: str,
+    result: dict,
+    sharpness_score: float,
+    original_png_bytes: bytes = None,
+    heatmap_png_bytes: bytes = None,
+) -> dict:
+    """Logs a prediction. If the two result images are supplied, saves them
+    to disk under a random reference_code, so the person can view them again
+    later via that code. Returns {"id": ..., "reference_code": ...} -
+    reference_code is None if images were not supplied (nothing retained)."""
+    reference_code = None
+    original_path = None
+    heatmap_path = None
+
+    if original_png_bytes is not None and heatmap_png_bytes is not None:
+        reference_code = secrets.token_urlsafe(8)
+        Config.RESULT_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        original_path = str(Config.RESULT_IMAGE_DIR / f"{reference_code}_original.png")
+        heatmap_path = str(Config.RESULT_IMAGE_DIR / f"{reference_code}_heatmap.png")
+        with open(original_path, "wb") as f:
+            f.write(original_png_bytes)
+        with open(heatmap_path, "wb") as f:
+            f.write(heatmap_png_bytes)
+
     conn = get_connection()
-    conn.execute(
+    cursor = conn.execute(
         """
         INSERT INTO predictions
             (timestamp, image_hash, model_used, predicted_label,
-             malignant_probability, sharpness_score, risk_flag)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+             malignant_probability, sharpness_score, risk_flag,
+             reference_code, original_image_path, heatmap_image_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now(timezone.utc).isoformat(),
@@ -139,10 +167,26 @@ def log_prediction(image_bytes: bytes, model_used: str, result: dict, sharpness_
             result["malignant_probability"],
             sharpness_score,
             result["risk_flag"],
+            reference_code,
+            original_path,
+            heatmap_path,
         ),
     )
+    row_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    return {"id": row_id, "reference_code": reference_code}
+
+
+def get_prediction_by_reference_code(reference_code: str):
+    """Looks up a prediction by its random reference_code - never by the
+    sequential id, since that would let the images be enumerated."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM predictions WHERE reference_code = ?", (reference_code,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_recent_logs(limit: int = 50):

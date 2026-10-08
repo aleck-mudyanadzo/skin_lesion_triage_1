@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Saved Result: Skin Lesion Triage{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm rounded-4 border-0">
+                <div class="card-body p-4">
+                    <h4 class="card-title mb-1 fw-bold">
+                        <i class="bi bi-clipboard2-data text-primary"></i> Saved Triage Result
+                    </h4>
+                    <p class="text-muted small mb-3">Reference code: <code>{{ row.reference_code }}</code> | Logged {{ row.timestamp[:19] }} UTC</p>
+
+                    <div class="row">
+                        <div class="col-md-6 text-center mb-3">
+                            <p class="fw-bold">Original (preprocessed)</p>
+                            <img src="data:image/png;base64,{{ original_b64 }}" class="img-fluid rounded-4 border">
+                        </div>
+                        <div class="col-md-6 text-center mb-3">
+                            <p class="fw-bold">Grad-CAM Heatmap</p>
+                            <img src="data:image/png;base64,{{ heatmap_b64 }}" class="img-fluid rounded-4 border">
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    {% if row.risk_flag == "urgent_referral" %}
+                    <span class="badge risk-badge-malignant fs-6 mb-2">Urgent Referral Suggested</span>
+                    {% else %}
+                    <span class="badge risk-badge-benign fs-6 mb-2">Routine / Low Risk</span>
+                    {% endif %}
+
+                    <table class="table table-sm mt-2">
+                        <tr><th>Predicted Class</th><td>{{ row.predicted_label }}</td></tr>
+                        <tr><th>Malignant-suspect model score (uncalibrated)</th><td>{{ "%.4f"|format(row.malignant_probability) }}</td></tr>
+                        <tr><th>Image Sharpness Score</th><td>{{ row.sharpness_score }}</td></tr>
+                        <tr><th>Model Used</th><td>{{ row.model_used }}</td></tr>
+                    </table>
+                    <p class="text-muted small">Model scores are uncalibrated outputs, not probabilities or a diagnosis. This is not a substitute for assessment by a qualified clinician.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
