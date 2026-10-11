@@ -1,1 +1,1 @@
-{"threshold": 0.5, "met_target": true}
+{"threshold": 0.4525838792324066, "val_recall_at_threshold": 0.8532, "val_precision_at_threshold": 0.2308, "target_recall": 0.85, "met_target": true}

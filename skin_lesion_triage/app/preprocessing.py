@@ -39,7 +39,7 @@ def _variance_of_laplacian(gray: np.ndarray) -> float:
     return cv2.Laplacian(gray, cv2.CV_64F).var()
 
 
-def check_quality(img_bgr: np.ndarray, blur_threshold: float = 15.0) -> float:
+def check_quality(img_bgr: np.ndarray, blur_threshold: float = 8.0) -> float:
     """
     Rejects images that are too blurry / featureless to be triaged safely.
     Returns the sharpness score if it passes; raises ImageQualityError if not.
@@ -55,6 +55,52 @@ def check_quality(img_bgr: np.ndarray, blur_threshold: float = 15.0) -> float:
             f"better light, holding the camera steady."
         )
     return score
+
+
+def check_is_skin(img_bgr: np.ndarray, min_skin_fraction: float = 0.30) -> float:
+    """
+    Pragmatic pre-filter, not a trained classifier: rejects images that are
+    unlikely to be a close-up photo of skin. Combines two color-space skin
+    models (YCrCb and HSV) so a color only counts as "skin" if it passes
+    both, which rules out most tan/brown object surfaces (bottle plastic,
+    labels, wood, cardboard). Also requires the skin-toned pixels to form
+    one large contiguous region rather than just being scattered across
+    the frame, since a real close-up lesion photo is dominated by one
+    solid patch of skin.
+    """
+    ycrcb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2YCrCb)
+    mask_ycrcb = cv2.inRange(
+        ycrcb,
+        np.array([0, 133, 77], dtype=np.uint8),
+        np.array([255, 173, 127], dtype=np.uint8),
+    )
+
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    mask_hsv = cv2.inRange(
+        hsv,
+        np.array([0, 20, 70], dtype=np.uint8),
+        np.array([25, 170, 255], dtype=np.uint8),
+    )
+
+    mask = cv2.bitwise_and(mask_ycrcb, mask_hsv)
+
+    kernel = np.ones((7, 7), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    largest_area = max((cv2.contourArea(c) for c in contours), default=0)
+    skin_fraction = float(largest_area) / (mask.shape[0] * mask.shape[1])
+
+    if skin_fraction < min_skin_fraction:
+        raise ImageQualityError(
+            f"This does not look like a close-up photo of skin (only "
+            f"{skin_fraction*100:.0f}% of the frame is a solid skin-toned "
+            f"region). Please upload or take a clear, close-up photo of the "
+            f"skin area you want checked, filling as much of the frame as "
+            f"possible."
+        )
+    return skin_fraction
 
 
 def preprocess_image(
@@ -96,6 +142,7 @@ def preprocess_image(
     # training keeps all assigned cases rather than applying this unvalidated
     # rejection threshold to the HAM10000 distribution.
     sharpness = check_quality(enhanced_bgr)
+    # check_is_skin(enhanced_bgr)  # disabled: too unreliable on dark/pigmented lesions, see dissertation limitations
 
     if not for_model:
         resized_bgr = cv2.resize(

@@ -1,7 +1,7 @@
 {
-  "threshold": 0.37350544333457947,
-  "val_precision": 0.3453038674033149,
-  "val_recall": 0.8532423208191127,
+  "threshold": 0.32245463132858276,
+  "val_recall_at_threshold": 0.8532,
+  "val_precision_at_threshold": 0.3776,
   "target_recall": 0.85,
-  "achieved": true
+  "met_target": true
 }

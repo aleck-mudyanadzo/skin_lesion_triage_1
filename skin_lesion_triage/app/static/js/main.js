@@ -72,6 +72,19 @@ document.addEventListener("DOMContentLoaded", function () {
         reader.readAsDataURL(file);
     }
 
+    const cameraBtn = document.getElementById("camera-btn");
+    const cameraInput = document.getElementById("camera-input");
+    if (cameraBtn && cameraInput) {
+        cameraBtn.addEventListener("click", function () {
+            cameraInput.click();
+        });
+        cameraInput.addEventListener("change", function () {
+            if (cameraInput.files && cameraInput.files.length > 0) {
+                handleFile(cameraInput.files[0]);
+            }
+        });
+    }
+
     if (analyzeBtn) {
         analyzeBtn.addEventListener("click", function () {
             if (!selectedFile) return;
@@ -135,6 +148,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const isMalignant = label.toLowerCase().indexOf("malignant") !== -1;
         const badgeClass = isMalignant ? "risk-badge-malignant" : "risk-badge-benign";
 
+        const captionText = isMalignant
+            ? "This looks like something worth getting checked by a dermatologist soon. This tool is a first screening only, not a diagnosis."
+            : "Good news, nothing concerning flagged this time. This is just a quick screening though, not a diagnosis, so keep an eye on anything unusual and see a dermatologist if something changes.";
+
         let meterClass = "risk-meter-low";
         if (score >= 0.66) {
             meterClass = "risk-meter-high";
@@ -172,6 +189,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 "<span class=\"text-muted small\">" + riskFlag + "</span>" +
                 "</div>" +
                 "<div class=\"text-center small text-muted mb-3\">Malignant probability: " + scorePct + "%</div>" +
+                "<div class=\"alert alert-light border small mb-3\">" + captionText + "</div>" +
+                "<div class=\"d-grid mb-3\"><a href=\"/survey\" class=\"btn btn-success btn-lg\"><i class=\"bi bi-clipboard2-check\"></i> Take the 2-Minute Survey</a></div>" +
                 refLine;
         }
 
