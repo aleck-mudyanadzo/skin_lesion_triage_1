@@ -13,3 +13,7 @@ instance/result_images/*
 !instance/result_images/.gitkeep
 
 models/*.keras
+
+processed_data.zip
+patch_*.py
+disable_skin_check.py
