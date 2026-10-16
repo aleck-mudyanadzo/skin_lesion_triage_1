@@ -6,13 +6,11 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
-models/*.keras
 app/static/uploads/*
 !app/static/uploads/.gitkeep
 instance/result_images/*
 !instance/result_images/.gitkeep
 
-models/*.keras
 
 processed_data.zip
 patch_*.py
